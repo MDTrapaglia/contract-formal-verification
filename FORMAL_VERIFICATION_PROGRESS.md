@@ -1,5 +1,27 @@
 # Formal verification continuation log
 
+## 2026-10-11 UTC — ETH liquidation with accrued fees
+
+- Strengthened `thirdPartyCannotLiquidateSolventETH` to initialize operator and
+  protocol snapshots at a symbolic earlier block and to use symbolic operator
+  and network fees.
+- Bounded elapsed accrual and the liquidation period to 1,000,000 blocks, fees
+  to 1,000,000,000 packed units, and explicit vUnits to 100,000,000. The index
+  headroom assumptions keep modeled `uint64` additions in range; the vUnits
+  bound also keeps accrued operator/DAO balances within their packed range.
+- The independent liquidation helper already skips inactive snapshots as the
+  execution path does. This rule initializes all four operators active, so
+  mixed active/inactive operator sets remain a separate domain extension.
+- Added a `satisfy` witness requiring positive operator and network fees plus at
+  least one elapsed block. Certora found a solvent witness with those
+  conditions and found the universal rule non-vacuous.
+- CVL formatting and direct local Certora compilation passed. The existing
+  `SSVViews.getOperatorFee` warning remains unchanged.
+- Cloud verification completed with exit code 0 and `No errors found by
+  Prover!`; view equivalence, third-party revert, and stored-hash preservation
+  all passed:
+  <https://prover.certora.com/output/10390566/7e7ac39862a74b6fb1def7749be41181>.
+
 ## 2026-10-11 UTC — Certora legacy SSV liquidation
 
 - Continued with view-versus-liquidation equivalence for both accounting modes.

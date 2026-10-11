@@ -15,6 +15,7 @@ Las siguientes verificaciones cloud terminaron con código 0 y
 | `thirdPartyCannotLiquidateSolventSSV` + `ownerMayAttemptSelfLiquidationSSV` + comparación SSV view/ejecución | PASS | [SSV](https://prover.certora.com/output/10390566/9df9c62b7d44466487645cfacbec06c3) |
 | `successfulWithdrawPreservesETHSolvency` y testigo de retiro exitoso | PASS | [ETH withdraw](https://prover.certora.com/output/10390566/a4f63447e4044b29ae74e150d7871012) |
 | `successfulAccruedETHWithdrawPreservesSolvency` y testigo con fees positivos | PASS | [ETH withdraw con accrual](https://prover.certora.com/output/10390566/adda14406f9a4e20860b0db293eb0434) |
+| `thirdPartyCannotLiquidateSolventETH` con accrual y fees no cero | PASS | [ETH liquidation con accrual](https://prover.certora.com/output/10390566/7e7ac39862a74b6fb1def7749be41181) |
 
 Los reportes de liquidación incluyen testigos de reachability para la excepción
 de self-liquidation del owner y para estados solventes. Las aserciones de view
@@ -86,11 +87,12 @@ directos anteriores; no editar ni borrar ese test para forzar el build.
 
 ## Limitaciones actuales del modelo
 
-- Liquidación ETH: cuatro operadores ordenados y distintos; snapshots de
-  operador inicializados en el bloque actual y fees de operador en cero; fees
-  de red, balance, umbral y vUnits (implícitos o explícitos válidos) simbólicos.
-  Por tanto, todavía falta una obligación ETH de liquidación con fees de
-  operador no cero y tiempo transcurrido.
+- Liquidación ETH: cuatro operadores ordenados y distintos; snapshots con hasta
+  1,000,000 bloques de accrual; fees de operador y red acotados a 1,000,000,000
+  raw units; periodo de liquidación hasta 1,000,000 y vUnits explícitos hasta
+  100,000,000. El helper independiente omite snapshots inactivos como la ruta
+  de ejecución, aunque el constructor de esta regla inicializa los cuatro como
+  activos.
 - Liquidación SSV: cuatro operadores ordenados y distintos; 1–100 validadores;
   snapshots con hasta 1,000,000 bloques de accrual; fees de operador y red
   acotados a 1,000,000,000 raw units; periodo de liquidación hasta 1,000,000.
@@ -107,28 +109,21 @@ directos anteriores; no editar ni borrar ese test para forzar el build.
 
 ## Siguiente trabajo recomendado
 
-1. **Ampliar liquidación ETH con accrual no trivial.** Añadir snapshots en un
-   bloque simbólico anterior, fee de operador no cero y límite explícito para
-   `block.number - snapshotBlock` y productos `uint64`. Ajustar el helper
-   independiente para saltar operadores inactivos como hace la ruta real.
-   Mantener comparación con `SSVViews.isLiquidatable`, solvente-precondition,
-   revert del tercero y hash sin cambios. Añadir un `satisfy` que exija fee
-   positivo y al menos un bloque transcurrido.
-2. **Probar liquidación de cluster insolvente y contabilidad posterior.** Para
+1. **Probar liquidación de cluster insolvente y contabilidad posterior.** Para
    ETH y SSV por separado, crear un testigo de liquidación exitosa y comprobar
    el cluster inactivo, hash canónico, contadores y distribución/burn de saldo.
    Modelar explícitamente pagos ETH/SSV o acotar la propiedad a estado que no
    requiera llamadas externas sin justificar esos supuestos.
-3. **Extender el dominio de operadores.** Evaluar 1, 4, 7, 10 y 13 operadores
+2. **Extender el dominio de operadores.** Evaluar 1, 4, 7, 10 y 13 operadores
    y estados con snapshot activo/inactivo. Evitar transformar todo de una vez:
    mantener un baseline de cuatro y medir timeout/alcance por cada variante.
-4. **Propiedad de separación de activos.** Verificar que liquidación/retiro SSV
+3. **Propiedad de separación de activos.** Verificar que liquidación/retiro SSV
    no altera balances ETH ni viceversa, usando hashes/observaciones antes y
    después para ambos espacios de almacenamiento.
-5. **Migración SSV→ETH.** Antes de formular un invariante amplio, mapear las
+4. **Migración SSV→ETH.** Antes de formular un invariante amplio, mapear las
    funciones y slots afectados. Probar que no queden derechos de retiro en
    ambos sistemas y que un segundo intento de migración no sea aceptado.
-6. **Cruzar con Halmos/Foundry.** Portar primero las obligaciones exitosas de
+5. **Cruzar con Halmos/Foundry.** Portar primero las obligaciones exitosas de
    liquidación y withdraw; preservar los supuestos y límites de cada herramienta
    y convertir todo contraejemplo formal en regresión determinista.
 
