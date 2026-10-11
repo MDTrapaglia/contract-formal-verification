@@ -45,6 +45,124 @@ La prueba actual está limitada a clusters ETH, cuatro operadores ordenados y
 distintos, un máximo de 100 validadores y estado construido por el harness. No
 constituye una prueba de todo el protocolo.
 
+### 2.1 Baseline de issues conocidos del bounty
+
+`bounty_known_page.md` debe usarse como lista de exclusión y como fuente de
+hipótesis, no como lista de hallazgos para volver a reportar. A fecha del último
+registro incluido en ese archivo, el programa reconoce siete comportamientos:
+
+| ID | Comportamiento conocido | Clasificación indicada |
+|---|---|---|
+| K-1 | Drift de effective balance entre roots: una root anterior a una eliminación de validadores puede elevar posteriormente el umbral y disparar auto-liquidación | Riesgo conocido con mitigación operativa |
+| K-2 | El índice congelado de un operador eliminado continúa formando parte del settlement del cluster | Comportamiento intencional |
+| K-3 | Un depósito permissionless de 1 wei puede invalidar el struct de cluster de una transacción pendiente | Trade-off de diseño |
+| K-4 | Aritmética `uint64` podría desbordar teóricamente, pero no bajo parámetros y horizontes considerados realistas | Riesgo residual aceptado |
+| K-5 | La solvencia depende de que liquidadores/updaters ejecuten una transacción; el protocolo no actúa autónomamente | Supuesto de liveness aceptado |
+| K-6 | La capacidad por operador es un recurso compartido first-come y puede bloquear registros, reactivaciones o migraciones mientras el atacante pague el coste | Trade-off económico aceptado |
+| K-7 | El límite porcentual de aumento de fee redondea hacia arriba hasta una unidad raw por declaración | Redondeo aceptado |
+
+Estos casos no deben convertirse en reportes salvo que se demuestre una variante
+materialmente distinta: otra causa raíz, un impacto superior al aceptado, una
+precondición más débil, extracción rentable, pérdida irreversible o bypass de
+la mitigación descrita.
+
+### 2.2 Búsqueda de variantes derivadas
+
+#### K-1 — Drift entre roots
+
+No repetir la secuencia conocida remove → withdraw → stale proof. Buscar:
+
+- drift causado por bulk register/remove, migración o reactivación;
+- combinación de varios cambios de validator count antes de consumir una root;
+- raíces consecutivas consumidas fuera de orden lógico;
+- prueba válida para estado cuya identidad cambió por migración;
+- accounting incorrecto cuando el cluster comparte operadores eliminados;
+- auto-liquidación cuyo bounty o actualización global excede el balance del
+  cluster afectado;
+- una secuencia donde mantener el buffer recomendado no evita la pérdida.
+
+#### K-2 — Índices de operadores eliminados
+
+No reportar que el índice congelado se conserva. Buscar:
+
+- doble settlement del índice al combinar remove, migration y reactivate;
+- divergencia entre views y ejecución con varios operadores eliminados;
+- fee cobrado después del bloque de eliminación;
+- índice congelado omitido en una ruta pero incluido en otra;
+- underflow o bloqueo permanente cuando cluster/index quedan desordenados;
+- cobro atribuido al actor incorrecto tras remove/re-register.
+
+#### K-3 — Invalidación por depósitos permissionless
+
+Un revert retriable por front-running no es suficiente. Buscar:
+
+- operación con deadline, root o ventana que deja de ser retriable;
+- griefing barato que produzca pérdida, liquidación o bloqueo sostenido;
+- invalidación dentro de bundles o integraciones que no pueden reconstruir el
+  struct;
+- combinación con cambios de fee/EB que haga económicamente rentable el ataque;
+- mutación que afecte una operación de emergencia o una migración única.
+
+#### K-4 — Aritmética `uint64`
+
+No basta un overflow teórico fuera de parámetros. Buscar:
+
+- secuencia alcanzable con parámetros actualmente permitidos;
+- overflow intermedio antes que el horizonte analizado;
+- cast que trunca sin revertir, aunque no exista overflow aritmético;
+- multiplicación con vUnits/EB máximo no incluida en el análisis conocido;
+- cambio administrativo permitido que invalide el margen de seguridad;
+- bloqueo o pérdida causada por acercarse al límite sin llegar a desbordarlo.
+
+#### K-5 — Liveness de liquidadores
+
+No reportar simplemente que alguien debe llamar. Buscar:
+
+- estado liquidatable donde todas las rutas de liquidación revierten;
+- incentivo negativo o bounty insuficiente causado por cálculo incorrecto;
+- insolvencia que crece aunque exista un liquidador activo;
+- discrepancia de views que impide detectar el estado;
+- griefing repetible que invalida cada intento a menor coste que el liquidador;
+- dependencia circular entre root fresca y liquidación.
+
+#### K-6 — Capacidad first-come
+
+No reportar ocupación pagada y temporal. Buscar:
+
+- slots creados sin collateral o sin pagar fees;
+- contadores que no se liberan después de liquidación/removal;
+- bypass de operador privado o whitelist;
+- bloqueo permanente de fondos, no solo de migración;
+- amplificación que permita bloquear muchos slots con coste sublineal;
+- discrepancia entre `validatorCount` legacy y `ethValidatorCount` que supere o
+  evada el límite.
+
+#### K-7 — Redondeo del aumento de fee
+
+No reportar el exceso de una unidad raw ya reconocido. Buscar:
+
+- amplificación superior a una unidad por declaración;
+- ruta alternativa que omita `operatorMaxFee`;
+- composición de redondeos que reduzca el periodo efectivo entre aumentos;
+- divergencia entre fee declarado, ejecutado, mostrado y cobrado;
+- redondeo asimétrico que genere ganancias extra o insolvencia de clusters;
+- valores frontera cero/mínimo/máximo con resultado fuera del rango permitido.
+
+### 2.3 Regla de novedad antes de reportar
+
+Para cada candidato se debe completar esta comparación:
+
+1. issue conocido más cercano;
+2. causa raíz conocida y causa raíz candidata;
+3. precondiciones de ambas secuencias;
+4. impacto aceptado frente al impacto demostrado;
+5. razón por la que las mitigaciones publicadas no funcionan;
+6. test mínimo reproducible sobre el commit en scope;
+7. evidencia de que no es solo una reformulación del comportamiento conocido.
+
+Si no existe una diferencia material en al menos causa raíz, alcanzabilidad o
+impacto, el candidato debe cerrarse internamente y no enviarse al bounty.
+
 ## 3. Modelo de amenazas
 
 ### Actores adversarios
@@ -312,6 +430,9 @@ Pruebas sugeridas:
 - verificación automática del storage layout en CI.
 
 ## 5. Hipótesis concretas de vulnerabilidad
+
+Las hipótesis siguientes son puntos de partida. Las que se solapan con K-1 a
+K-7 solo son reportables si superan el filtro de novedad de la sección 2.3.
 
 1. Diferencia entre `isLiquidatable` y la liquidación ejecutable.
 2. Settlement con vUnits nuevos cuando correspondían los anteriores.
