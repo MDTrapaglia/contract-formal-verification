@@ -1,0 +1,13 @@
+.venv-certora/
+repos/
+
+# Certora credentials and local reports
+.certora_internal/
+.certora_config.json
+certora_metadata.json
+
+# Local/editor artifacts
+*.log
+*.swp
+*~
+*:Zone.Identifier
